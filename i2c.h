@@ -11,7 +11,7 @@
 
 #include <inttypes.h>
 
-void i2c_init();
+void i2c_init(uint16_t i2c_freq = 100000);
 bool i2c_begin_write(uint8_t addr);
 bool i2c_begin_read(uint8_t addr);
 bool i2c_write(uint8_t data);

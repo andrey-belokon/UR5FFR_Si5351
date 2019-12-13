@@ -104,7 +104,6 @@ void si5351_setup_msynth_int(uint8_t synth, uint32_t divider, uint8_t rDiv)
 
 void Si5351::setup(uint8_t _power0, uint8_t _power1, uint8_t _power2)
 {
-  i2c_init();
   power0 = _power0 & 0x3;
   power1 = _power1 & 0x3;
   power2 = _power2 & 0x3;

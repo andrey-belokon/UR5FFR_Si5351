@@ -93,13 +93,13 @@ bool i2c_device_found(uint8_t addr)
 }
 
 // Init TWI (I2C)
-void i2c_init()
+void i2c_init(uint16_t i2c_freq)
 {
-  // внутренние pull-up резисторы
-  digitalWrite(SCL, 1);
-  digitalWrite(SDA, 1);
-	TWBR = 92;						
-	TWSR = 0;
-	TWDR = 0xFF;
-	PRR = 0;
+  pinMode(SCL, INPUT);
+  pinMode(SDA, INPUT);
+
+  TWBR = ((F_CPU / i2c_freq) - 16) / 2;
+  TWSR = 0;
+  TWDR = 0xFF;
+  PRR = 0;
 }
