@@ -38,6 +38,7 @@
 
 uint32_t Si5351::VCOFreq_Max = 900000000;
 uint32_t Si5351::VCOFreq_Min = 600000000;
+uint32_t Si5351::VCOFreq_Mid = 750000000;
 
 static uint16_t freq0_div, freq1_div, freq2_div;
 static uint8_t freq0_rdiv, freq1_rdiv, freq2_rdiv;
@@ -110,6 +111,7 @@ void Si5351::setup(uint8_t _power0, uint8_t _power1, uint8_t _power2)
   si5351_write_reg(SI_CLK0_CONTROL, 0x80);
   si5351_write_reg(SI_CLK1_CONTROL, 0x80);
   si5351_write_reg(SI_CLK2_CONTROL, 0x80);
+  VCOFreq_Mid = (VCOFreq_Min+VCOFreq_Max) >> 1;
 }
 
 void Si5351::set_power(uint8_t _power0, uint8_t _power1, uint8_t _power2)
@@ -206,24 +208,31 @@ void Si5351::update_freq0(uint8_t* need_reset_pll)
     disable_out(0);
     return;
   }
-  
-  divider = VCOFreq_Max / freq0;
-  if (divider < 4) 
-  {
-    disable_out(0);
-    return;
-  }
-  
-  if (divider < 6) 
-    divider = 4;
-    
-  while (divider > 300) {
-    rdiv++;
-    divider >>= 1;
-  }
-  if (rdiv == 0) divider &= 0xFFFFFFFE;
 
+  // try to use last divider
+  divider = freq0_div;
+  rdiv = freq0_rdiv;
   pll_freq = divider * freq0 * (1 << rdiv);
+  
+  if (pll_freq < VCOFreq_Min || pll_freq > VCOFreq_Max) {
+    divider = VCOFreq_Mid / freq0;
+    if (divider < 4) 
+    {
+      disable_out(0);
+      return;
+    }
+    
+    if (divider < 6) 
+      divider = 4;
+      
+    while (divider > 300) {
+      rdiv++;
+      divider >>= 1;
+    }
+    if (rdiv == 0) divider &= 0xFFFFFFFE;
+  
+    pll_freq = divider * freq0 * (1 << rdiv);
+  }
 
   mult = pll_freq*10 / xtal_freq;
   num = (pll_freq - (uint64_t)mult*xtal_freq/10)*FRAC_DENOM*10/xtal_freq;
@@ -258,20 +267,27 @@ void Si5351::update_freq12(uint8_t freq1_changed, uint8_t* need_reset_pll)
 
   if (freq1) {
     if (freq1_changed) {
-      divider = VCOFreq_Max / freq1;
-      if (divider < 4) {
-        disable_out(1);
-        return;
-      }
-      if (divider < 6) 
-        divider = 4;
-      while (divider > 300) {
-        rdiv++;
-        divider >>= 1;
-      }
-      if (rdiv == 0) divider &= 0xFFFFFFFE;
-    
+      // try to use last divider
+      divider = freq1_div;
+      rdiv = freq1_rdiv;
       pll_freq = divider * freq1 * (1 << rdiv);
+      
+      if (pll_freq < VCOFreq_Min || pll_freq > VCOFreq_Max) {
+        divider = VCOFreq_Mid / freq1;
+        if (divider < 4) {
+          disable_out(1);
+          return;
+        }
+        if (divider < 6) 
+          divider = 4;
+        while (divider > 300) {
+          rdiv++;
+          divider >>= 1;
+        }
+        if (rdiv == 0) divider &= 0xFFFFFFFE;
+        
+        pll_freq = divider * freq1 * (1 << rdiv);
+      }
     
       mult = pll_freq*10 / xtal_freq;
       num = (pll_freq - (uint64_t)mult*xtal_freq/10)*FRAC_DENOM*10/xtal_freq;
@@ -310,18 +326,25 @@ void Si5351::update_freq12(uint8_t freq1_changed, uint8_t* need_reset_pll)
     }
   } else if (freq2) {
     // PLL_B --> CLK2, multisynth integer
-    divider = VCOFreq_Max / freq2;
-    if (divider < 6) {
-      disable_out(2);
-      return;
-    }
-    while (divider > 300) {
-      rdiv++;
-      divider >>= 1;
-    }
-    if (rdiv == 0) divider &= 0xFFFFFFFE;
-  
+    // try to use last divider
+    divider = freq2_div;
+    rdiv = freq2_rdiv;
     pll_freq = divider * freq2 * (1 << rdiv);
+    
+    if (pll_freq < VCOFreq_Min || pll_freq > VCOFreq_Max) {
+      divider = VCOFreq_Mid / freq2;
+      if (divider < 6) {
+        disable_out(2);
+        return;
+      }
+      while (divider > 300) {
+        rdiv++;
+        divider >>= 1;
+      }
+      if (rdiv == 0) divider &= 0xFFFFFFFE;
+    
+      pll_freq = divider * freq2 * (1 << rdiv);
+    }
   
     mult = pll_freq*10 / xtal_freq;
     num = (pll_freq - (uint64_t)mult*xtal_freq/10)*FRAC_DENOM*10/xtal_freq;
@@ -350,7 +373,7 @@ void Si5351::update_freq01_quad(uint8_t* need_reset_pll)
     disable_out(1);
     return;
   }
-  
+
   if (freq0 >= 7000000) {
     divider = (VCOFreq_Max / freq0);
   } else if (freq0 >= 4000000) {
@@ -405,23 +428,30 @@ void Si5351::update_freq2(uint8_t* need_reset_pll)
   }
 
   // PLL_B --> CLK2, multisynth integer
-  divider = VCOFreq_Max / freq2;
-  if (divider < 4) {
-    disable_out(2);
-    return;
-  }
-
-  if (divider < 6) 
-    divider = 4;
-
-  while (divider > 300) {
-    rdiv++;
-    divider >>= 1;
-  }
-  if (rdiv == 0) divider &= 0xFFFFFFFE;
-
+  // try to use last divider
+  divider = freq2_div;
+  rdiv = freq2_rdiv;
   pll_freq = divider * freq2 * (1 << rdiv);
-
+  
+  if (pll_freq < VCOFreq_Min || pll_freq > VCOFreq_Max) {
+    divider = VCOFreq_Mid / freq2;
+    if (divider < 4) {
+      disable_out(2);
+      return;
+    }
+  
+    if (divider < 6) 
+      divider = 4;
+  
+    while (divider > 300) {
+      rdiv++;
+      divider >>= 1;
+    }
+    if (rdiv == 0) divider &= 0xFFFFFFFE;
+  
+    pll_freq = divider * freq2 * (1 << rdiv);
+  }
+  
   mult = pll_freq*10 / xtal_freq;
   num = (pll_freq - (uint64_t)mult*xtal_freq/10)*FRAC_DENOM*10/xtal_freq;
 

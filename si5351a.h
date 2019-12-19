@@ -25,6 +25,7 @@
  
 class Si5351 {
   private:
+    static uint32_t VCOFreq_Mid; 
     void update_freq0(uint8_t* need_reset_pll);
     void update_freq12(uint8_t freq1_changed, uint8_t* need_reset_pll);
     void update_freq2(uint8_t* need_reset_pll);
