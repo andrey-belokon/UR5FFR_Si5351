@@ -25,6 +25,11 @@
  
 class Si5351 {
   private:
+    uint16_t freq0_div, freq1_div, freq2_div;
+    uint8_t freq0_rdiv, freq1_rdiv, freq2_rdiv;
+    uint8_t power0, power1, power2;
+    uint32_t xtal_freq, freq0, freq1, freq2, freq_pll_b;
+
     static uint32_t VCOFreq_Mid; 
     void update_freq0(uint8_t* need_reset_pll);
     void update_freq12(uint8_t freq1_changed, uint8_t* need_reset_pll);
@@ -35,6 +40,8 @@ class Si5351 {
   public:
     static uint32_t VCOFreq_Max; // == 900000000
     static uint32_t VCOFreq_Min; // == 600000000
+
+    Si5351() { xtal_freq=270000000; }
     
     // power 0=2mA, 1=4mA, 2=6mA, 3=8mA
     void setup(uint8_t _power1 = 3, uint8_t _power2 = 3, uint8_t _power3 = 3);

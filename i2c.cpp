@@ -93,7 +93,7 @@ bool i2c_device_found(uint8_t addr)
 }
 
 // Init TWI (I2C)
-void i2c_init(uint16_t i2c_freq)
+void i2c_init(uint32_t i2c_freq)
 {
   pinMode(SCL, INPUT);
   pinMode(SDA, INPUT);

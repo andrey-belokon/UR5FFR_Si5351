@@ -65,7 +65,6 @@ void Si570::i2c_write_reg(uint8_t reg_address, uint8_t *data, uint8_t length)
   while (length-- > 0)
     i2c_write(*data++);
   i2c_end();
-  return length;
 }
 
 // Read a one byte register from the I2C device
@@ -132,7 +131,7 @@ void Si570::qwrite_si570()
 }
 
 #define fDCOMinkHz 4850000	// Minimum DCO frequency in kHz
-#define fDCOMaxkHz 5670000  // Maximum DCO frequency in KHz\
+#define fDCOMaxkHz 5670000  // Maximum DCO frequency in KHz
 
 // Locate an appropriate set of divisors (HSDiv and N1) give a desired output frequency
 bool Si570::findDivisors(uint32_t fout)

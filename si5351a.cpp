@@ -40,11 +40,6 @@ uint32_t Si5351::VCOFreq_Max = 900000000;
 uint32_t Si5351::VCOFreq_Min = 600000000;
 uint32_t Si5351::VCOFreq_Mid = 750000000;
 
-static uint16_t freq0_div, freq1_div, freq2_div;
-static uint8_t freq0_rdiv, freq1_rdiv, freq2_rdiv;
-static uint8_t power0, power1, power2;
-static uint32_t xtal_freq=270000000, freq0, freq1, freq2, freq_pll_b;
-
 void si5351_write_reg(uint8_t reg, uint8_t data)
 {
   i2c_begin_write(SI5351_I2C_ADDR);
@@ -182,6 +177,7 @@ uint8_t Si5351::is_freq_ok(uint8_t clk_num)
       return freq2_div != 0;
       break;
   }
+  return false;
 }
 
 void Si5351::out_calibrate_freq()
@@ -253,7 +249,6 @@ void Si5351::update_freq12(uint8_t freq1_changed, uint8_t* need_reset_pll)
   uint64_t pll_freq;
   uint8_t mult;
   uint32_t num;
-  uint32_t ff;
   uint32_t divider;
   uint8_t rdiv = 0;
 
@@ -418,7 +413,6 @@ void Si5351::update_freq2(uint8_t* need_reset_pll)
   uint64_t pll_freq;
   uint8_t mult;
   uint32_t num;
-  uint32_t ff;
   uint32_t divider;
   uint8_t rdiv = 0;
 
