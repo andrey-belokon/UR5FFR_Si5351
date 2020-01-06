@@ -220,7 +220,8 @@ void Si5351::update_freq0(uint8_t* need_reset_pll)
     
     if (divider < 6) 
       divider = 4;
-      
+
+    rdiv =  0;
     while (divider > 300) {
       rdiv++;
       divider >>= 1;
@@ -275,6 +276,7 @@ void Si5351::update_freq12(uint8_t freq1_changed, uint8_t* need_reset_pll)
         }
         if (divider < 6) 
           divider = 4;
+    	rdiv =  0;
         while (divider > 300) {
           rdiv++;
           divider >>= 1;
@@ -328,10 +330,13 @@ void Si5351::update_freq12(uint8_t freq1_changed, uint8_t* need_reset_pll)
     
     if (pll_freq < VCOFreq_Min || pll_freq > VCOFreq_Max) {
       divider = VCOFreq_Mid / freq2;
-      if (divider < 6) {
+      if (divider < 4) {
         disable_out(2);
         return;
       }
+      if (divider < 6) 
+        divider = 4;
+      rdiv =  0;
       while (divider > 300) {
         rdiv++;
         divider >>= 1;
@@ -437,6 +442,7 @@ void Si5351::update_freq2(uint8_t* need_reset_pll)
     if (divider < 6) 
       divider = 4;
   
+    rdiv =  0;
     while (divider > 300) {
       rdiv++;
       divider >>= 1;
