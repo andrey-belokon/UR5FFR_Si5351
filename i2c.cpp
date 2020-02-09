@@ -98,6 +98,7 @@ void i2c_init(uint32_t i2c_freq)
   pinMode(SCL, INPUT);
   pinMode(SDA, INPUT);
 
+  if (i2c_freq < 100000) i2c_freq = 100000;
   TWBR = ((F_CPU / i2c_freq) - 16) / 2;
   TWSR = 0;
   TWDR = 0xFF;
