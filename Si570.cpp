@@ -175,7 +175,7 @@ void Si570::setRFREQ(uint32_t fnew)
   rfreq = (fdco << 28) / freq_xtal;
 
   // Round the result
-  rfreq = rfreq + ((rfreq & 1<<(28-1))<<1);
+  //rfreq = rfreq + ((rfreq & 1<<(28-1))<<1);
 
   // Set up the RFREQ register values
   dco_reg[5] = rfreq & 0xff;

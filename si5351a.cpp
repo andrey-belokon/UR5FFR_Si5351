@@ -36,6 +36,9 @@
 // 1048575
 #define FRAC_DENOM 0xFFFFF
 
+// for fast rdiv shift 
+uint8_t power2[8] = {1,2,4,8,16,32,64,128};
+
 uint32_t Si5351::VCOFreq_Max = 900000000;
 uint32_t Si5351::VCOFreq_Min = 600000000;
 uint32_t Si5351::VCOFreq_Mid = 750000000;
@@ -68,7 +71,7 @@ void si5351_write_regs(uint8_t synth, uint32_t P1, uint32_t P2, uint32_t P3, uin
 // num is 0..1,048,575 (0xFFFFF)
 // denom is 0..1,048,575 (0xFFFFF)
 //
-void si5351_setup_msynth(uint8_t synth, uint8_t a, uint32_t b, uint32_t c, uint8_t rDiv)
+void si5351_setup_msynth_abc(uint8_t synth, uint8_t a, uint32_t b, uint32_t c, uint8_t rDiv)
 {
   uint32_t t = 128*b / c;
   si5351_write_regs(
@@ -98,48 +101,93 @@ void si5351_setup_msynth_int(uint8_t synth, uint32_t divider, uint8_t rDiv)
   );
 }
 
-void Si5351::setup(uint8_t _power0, uint8_t _power1, uint8_t _power2)
+void Si5351::si5351_setup_msynth(uint8_t synth, uint32_t pll_freq)
 {
-  power0 = _power0 & 0x3;
-  power1 = _power1 & 0x3;
-  power2 = _power2 & 0x3;
+  uint8_t a = pll_freq / xtal_freq;
+  uint32_t b = (pll_freq % xtal_freq) >> 5;
+  uint32_t c = xtal_freq >> 5;
+  uint32_t t = 128*b / c;
+  si5351_write_regs(
+    synth,
+    (uint32_t)(128 * (uint32_t)(a) + t - 512),
+    (uint32_t)(128 * b - c * t),
+    c,
+    0,
+    false
+  );
+}
+
+void Si5351::setup(uint8_t power0, uint8_t power1, uint8_t power2)
+{
+  power[0] = power0;
+  power[1] = power1;
+  power[2] = power2;
   si5351_write_reg(SI_CLK0_CONTROL, 0x80);
   si5351_write_reg(SI_CLK1_CONTROL, 0x80);
   si5351_write_reg(SI_CLK2_CONTROL, 0x80);
   VCOFreq_Mid = (VCOFreq_Min+VCOFreq_Max) >> 1;
 }
 
-void Si5351::set_power(uint8_t _power0, uint8_t _power1, uint8_t _power2)
+void Si5351::set_power(uint8_t clk_num, uint8_t value)
 {
-  uint32_t f0=freq0, f1=freq1, f2=freq2;
-  power0 = _power0 & 0x3;
-  power1 = _power1 & 0x3;
-  power2 = _power2 & 0x3;
-  freq0 = freq1 = freq2 = 0;
-  set_freq(f0, f1, f2);
+  power[clk_num] = value;
+  // for force update
+  freq[clk_num] = 0; 
+  freq_div[clk_num] = 0;
 }
 
-void Si5351::set_xtal_freq(uint32_t freq, uint8_t reset_pll)
+void Si5351::set_power(uint8_t power1, uint8_t power2, uint8_t power3)
 {
-  uint8_t need_reset_pll;
-  xtal_freq = freq*10;
-  update_freq0(&need_reset_pll);
-  update_freq12(1,&need_reset_pll);
-  if (reset_pll) si5351_write_reg(SI_PLL_RESET, 0xA0);
+  set_power(0,power1);
+  set_power(0,power2);
+  set_power(0,power3);
+}
+
+void Si5351::set_xtal_freq(uint32_t freq)
+{
+  xtal_freq = freq;
 }
 
 uint8_t Si5351::set_freq(uint32_t f0, uint32_t f1, uint32_t f2)
 {
-  uint8_t need_reset_pll = 0;
-  uint8_t freq1_changed = f1 != freq1;
-  if (f0 != freq0) {
-    freq0 = f0;
-    update_freq0(&need_reset_pll);
+  need_reset_pll = 0;
+  uint8_t freq1_changed = f1 != freq[1];
+  if (f0 != freq[0]) {
+    freq[0] = f0;
+    update_freq(0);
   }
-  if (freq1_changed || f2 != freq2) {
-    freq1 = f1;
-    freq2 = f2;
-    update_freq12(freq1_changed,&need_reset_pll);
+  if (freq1_changed || f2 != freq[2]) {
+    freq[1] = f1;
+    freq[2] = f2;
+    update_freq12(freq1_changed);
+  }
+  if (need_reset_pll) 
+    si5351_write_reg(SI_PLL_RESET, need_reset_pll);
+  return need_reset_pll;
+}
+
+uint8_t Si5351::set_freq(uint32_t f0, uint32_t f1)
+{
+  need_reset_pll = 0;
+  if (f0 != freq[0]) {
+    freq[0] = f0;
+    update_freq(0);
+  }
+  if (f1 != freq[1]) {
+    freq[1] = f1;
+    update_freq(1);
+  }
+  if (need_reset_pll) 
+    si5351_write_reg(SI_PLL_RESET, need_reset_pll);
+  return need_reset_pll;
+}
+
+uint8_t Si5351::set_freq(uint32_t f0)
+{
+  need_reset_pll = 0;
+  if (f0 != freq[0]) {
+    freq[0] = f0;
+    update_freq(0);
   }
   if (need_reset_pll) 
     si5351_write_reg(SI_PLL_RESET, need_reset_pll);
@@ -148,73 +196,47 @@ uint8_t Si5351::set_freq(uint32_t f0, uint32_t f1, uint32_t f2)
 
 void Si5351::disable_out(uint8_t clk_num)
 {
-  switch (clk_num) {
-    case 0: 
-      si5351_write_reg(SI_CLK0_CONTROL, 0x80);
-      freq0_div = 0;
-      break;
-    case 1: 
-      si5351_write_reg(SI_CLK1_CONTROL, 0x80);
-      freq1_div = 0;
-      break;
-    case 2: 
-      si5351_write_reg(SI_CLK2_CONTROL, 0x80);
-      freq2_div = 0;
-      break;
-  }
+ si5351_write_reg(SI_CLK0_CONTROL+clk_num, 0x80);
+ freq_div[clk_num] = 0;
 }
 
 uint8_t Si5351::is_freq_ok(uint8_t clk_num)
 {
-  switch (clk_num) {
-    case 0: 
-      return freq0_div != 0;
-      break;
-    case 1: 
-      return freq1_div != 0;
-      break;
-    case 2: 
-      return freq2_div != 0;
-      break;
-  }
-  return false;
+ return freq_div[clk_num] != 0;
 }
 
 void Si5351::out_calibrate_freq()
 {
-  si5351_write_reg(SI_CLK0_CONTROL, power0);
-  si5351_write_reg(SI_CLK1_CONTROL, power1);
-  si5351_write_reg(SI_CLK2_CONTROL, power2);
+  si5351_write_reg(SI_CLK0_CONTROL, power[0]);
+  si5351_write_reg(SI_CLK1_CONTROL, power[1]);
+  si5351_write_reg(SI_CLK2_CONTROL, power[2]);
   si5351_write_reg(SI_SYNTH_MS_0+2,0);
   si5351_write_reg(SI_SYNTH_MS_1+2,0);
   si5351_write_reg(SI_SYNTH_MS_2+2,0);
   si5351_write_reg(187, 0xD0);
-  freq0=freq1=freq2=xtal_freq;
+  freq[0]=freq[1]=freq[2]=xtal_freq;
 }
 
-void Si5351::update_freq0(uint8_t* need_reset_pll)
+void Si5351::update_freq(uint8_t clk_num)
 {
-  uint64_t pll_freq;
-  uint8_t mult;
-  uint32_t num;
-  uint32_t divider;
+  uint32_t divider,pll_freq;
   uint8_t rdiv = 0;
 
-  if (freq0 == 0) {
-    disable_out(0);
+  if (freq[clk_num] == 0) {
+    disable_out(clk_num);
     return;
   }
 
   // try to use last divider
-  divider = freq0_div;
-  rdiv = freq0_rdiv;
-  pll_freq = divider * freq0 * (1 << rdiv);
+  divider = freq_div[clk_num];
+  rdiv = freq_rdiv[clk_num];
+  pll_freq = divider * freq[clk_num] * power2[rdiv]; //(1 << rdiv);
   
   if (pll_freq < VCOFreq_Min || pll_freq > VCOFreq_Max) {
-    divider = VCOFreq_Mid / freq0;
+    divider = VCOFreq_Mid / freq[clk_num];
     if (divider < 4) 
     {
-      disable_out(0);
+      disable_out(clk_num);
       return;
     }
     
@@ -227,49 +249,42 @@ void Si5351::update_freq0(uint8_t* need_reset_pll)
       divider >>= 1;
     }
     if (rdiv == 0) divider &= 0xFFFFFFFE;
-  
-    pll_freq = divider * freq0 * (1 << rdiv);
+    pll_freq = divider * freq[clk_num] * power2[rdiv]; //(1 << rdiv);
   }
 
-  mult = pll_freq*10 / xtal_freq;
-  num = (pll_freq - (uint64_t)mult*xtal_freq/10)*FRAC_DENOM*10/xtal_freq;
-  
-  si5351_setup_msynth(SI_SYNTH_PLL_A, mult, num, FRAC_DENOM, 0);
+  si5351_setup_msynth((clk_num ? SI_SYNTH_PLL_B : SI_SYNTH_PLL_A), pll_freq);
 
-  if (divider != freq0_div || rdiv != freq0_rdiv) {
-    si5351_setup_msynth_int(SI_SYNTH_MS_0, divider, R_DIV(rdiv));
-    si5351_write_reg(SI_CLK0_CONTROL, 0x4C | power0 | SI_CLK_SRC_PLL_A);
-    freq0_div = divider;
-    freq0_rdiv = rdiv;
-    *need_reset_pll |= SI_PLL_RESET_A;
+  if (divider != freq_div[clk_num] || rdiv != freq_rdiv[clk_num]) {
+    si5351_setup_msynth_int(SI_SYNTH_MS_0+clk_num*8, divider, R_DIV(rdiv));
+    si5351_write_reg(SI_CLK0_CONTROL+clk_num, 0x4C | power[clk_num] | (clk_num ? SI_CLK_SRC_PLL_B : SI_CLK_SRC_PLL_A));
+    freq_div[clk_num] = divider;
+    freq_rdiv[clk_num] = rdiv;
+    need_reset_pll |= (clk_num ? SI_PLL_RESET_B : SI_PLL_RESET_A);
   }
 }
 
-void Si5351::update_freq12(uint8_t freq1_changed, uint8_t* need_reset_pll)
+void Si5351::update_freq12(uint8_t freq1_changed)
 {
-  uint64_t pll_freq;
-  uint8_t mult;
-  uint32_t num;
-  uint32_t divider;
+  uint32_t pll_freq,divider,num;
   uint8_t rdiv = 0;
 
-  if (freq1 == 0) {
+  if (freq[1] == 0) {
     disable_out(1);
   }
   
-  if (freq2 == 0) {
+  if (freq[2] == 0) {
     disable_out(2);
   }
 
-  if (freq1) {
+  if (freq[1]) {
     if (freq1_changed) {
       // try to use last divider
-      divider = freq1_div;
-      rdiv = freq1_rdiv;
-      pll_freq = divider * freq1 * (1 << rdiv);
+      divider = freq_div[1];
+      rdiv = freq_rdiv[1];
+      pll_freq = divider * freq[1] * power2[rdiv]; //(1 << rdiv);
       
       if (pll_freq < VCOFreq_Min || pll_freq > VCOFreq_Max) {
-        divider = VCOFreq_Mid / freq1;
+        divider = VCOFreq_Mid / freq[1];
         if (divider < 4) {
           disable_out(1);
           return;
@@ -283,32 +298,29 @@ void Si5351::update_freq12(uint8_t freq1_changed, uint8_t* need_reset_pll)
         }
         if (rdiv == 0) divider &= 0xFFFFFFFE;
         
-        pll_freq = divider * freq1 * (1 << rdiv);
+        pll_freq = divider * freq[1] * power2[rdiv]; //(1 << rdiv);
       }
     
-      mult = pll_freq*10 / xtal_freq;
-      num = (pll_freq - (uint64_t)mult*xtal_freq/10)*FRAC_DENOM*10/xtal_freq;
-    
-      si5351_setup_msynth(SI_SYNTH_PLL_B, mult, num, FRAC_DENOM, 0);
-      if (divider != freq1_div || rdiv != freq1_rdiv) {
+      si5351_setup_msynth(SI_SYNTH_PLL_B, pll_freq);
+      if (divider != freq_div[1] || rdiv != freq_rdiv[1]) {
         si5351_setup_msynth_int(SI_SYNTH_MS_1, divider, R_DIV(rdiv));
-        si5351_write_reg(SI_CLK1_CONTROL, 0x4C | power1 | SI_CLK_SRC_PLL_B);
-        freq1_div = divider;
-        freq1_rdiv = rdiv;
-        *need_reset_pll |= SI_PLL_RESET_B;
+        si5351_write_reg(SI_CLK1_CONTROL, 0x4C | power[1] | SI_CLK_SRC_PLL_B);
+        freq_div[1] = divider;
+        freq_rdiv[1] = rdiv;
+        need_reset_pll |= SI_PLL_RESET_B;
       }
       freq_pll_b = pll_freq;
     }
 
-    if (freq2) {
+    if (freq[2]) {
       // CLK2 --> PLL_B with fractional or integer multisynth 
-      divider = freq_pll_b / freq2;
+      divider = freq_pll_b / freq[2];
       if (divider < 8) {
         disable_out(2);
         return;
       }
       rdiv = 0;
-      uint32_t ff = freq2;
+      uint32_t ff = freq[2];
       while (divider > 64) {
         rdiv++;
         ff <<= 1;
@@ -317,19 +329,19 @@ void Si5351::update_freq12(uint8_t freq1_changed, uint8_t* need_reset_pll)
       divider = freq_pll_b / ff;
       num = (uint64_t)(freq_pll_b % ff) * FRAC_DENOM / ff;
         
-      si5351_setup_msynth(SI_SYNTH_MS_2,divider, num, (num?FRAC_DENOM:1), R_DIV(rdiv));
-      si5351_write_reg(SI_CLK2_CONTROL, (num?0x0C:0x4C) | power2 | SI_CLK_SRC_PLL_B);
-      freq2_div = 1; // non zero for correct enable/disable CLK2
+      si5351_setup_msynth_abc(SI_SYNTH_MS_2,divider, num, (num?FRAC_DENOM:1), R_DIV(rdiv));
+      si5351_write_reg(SI_CLK2_CONTROL, (num?0x0C:0x4C) | power[2] | SI_CLK_SRC_PLL_B);
+      freq_div[2] = 1; // non zero for correct enable/disable CLK2
     }
-  } else if (freq2) {
+  } else if (freq[2]) {
     // PLL_B --> CLK2, multisynth integer
     // try to use last divider
-    divider = freq2_div;
-    rdiv = freq2_rdiv;
-    pll_freq = divider * freq2 * (1 << rdiv);
+    divider = freq_div[2];
+    rdiv = freq_rdiv[2];
+    pll_freq = divider * freq[2] * power2[rdiv]; //(1 << rdiv);
     
     if (pll_freq < VCOFreq_Min || pll_freq > VCOFreq_Max) {
-      divider = VCOFreq_Mid / freq2;
+      divider = VCOFreq_Mid / freq[2];
       if (divider < 4) {
         disable_out(2);
         return;
@@ -343,42 +355,36 @@ void Si5351::update_freq12(uint8_t freq1_changed, uint8_t* need_reset_pll)
       }
       if (rdiv == 0) divider &= 0xFFFFFFFE;
     
-      pll_freq = divider * freq2 * (1 << rdiv);
+      pll_freq = divider * freq[2] * power2[rdiv]; //(1 << rdiv);
     }
   
-    mult = pll_freq*10 / xtal_freq;
-    num = (pll_freq - (uint64_t)mult*xtal_freq/10)*FRAC_DENOM*10/xtal_freq;
+    si5351_setup_msynth(SI_SYNTH_PLL_B, pll_freq);
   
-    si5351_setup_msynth(SI_SYNTH_PLL_B, mult, num, FRAC_DENOM, 0);
-  
-    if (divider != freq2_div || rdiv != freq2_rdiv) {
+    if (divider != freq_div[2] || rdiv != freq_rdiv[2]) {
       si5351_setup_msynth_int(SI_SYNTH_MS_2, divider, R_DIV(rdiv));
-      si5351_write_reg(SI_CLK2_CONTROL, 0x4C | power2 | SI_CLK_SRC_PLL_B);
-      freq2_div = divider;
-      freq2_rdiv = rdiv;
-      *need_reset_pll |= SI_PLL_RESET_B;
+      si5351_write_reg(SI_CLK2_CONTROL, 0x4C | power[2] | SI_CLK_SRC_PLL_B);
+      freq_div[2] = divider;
+      freq_rdiv[2] = rdiv;
+      need_reset_pll |= SI_PLL_RESET_B;
     }
   }
 }
 
-void Si5351::update_freq01_quad(uint8_t* need_reset_pll)
+void Si5351::update_freq_quad()
 {
-  uint64_t pll_freq;
-  uint8_t mult;
-  uint32_t num;
-  uint32_t divider;
+  uint32_t pll_freq,divider;
 
-  if (freq0 == 0) {
+  if (freq[0] == 0) {
     disable_out(0);
     disable_out(1);
     return;
   }
 
-  if (freq0 >= 7000000) {
-    divider = (VCOFreq_Max / freq0);
-  } else if (freq0 >= 4000000) {
-    divider = (VCOFreq_Min / freq0);
-  } else if (freq0 >= 2000000) {
+  if (freq[0] >= 7000000) {
+    divider = (VCOFreq_Max / freq[0]);
+  } else if (freq[0] >= 4000000) {
+    divider = (VCOFreq_Min / freq[0]);
+  } else if (freq[0] >= 2000000) {
     // VCO run on freq less than 600MHz. possible unstable
     // comment this for disable operation below 600MHz VCO (4MHz on out)
     divider = 0x7F;
@@ -394,88 +400,32 @@ void Si5351::update_freq01_quad(uint8_t* need_reset_pll)
   if (divider < 6) 
     divider = 4;
 
-  pll_freq = divider * freq0;
+  pll_freq = divider * freq[0];
 
-  mult = pll_freq*10 / xtal_freq;
-  num = (pll_freq - (uint64_t)mult*xtal_freq/10)*FRAC_DENOM*10/xtal_freq;
+  si5351_setup_msynth(SI_SYNTH_PLL_A, pll_freq);
 
-  si5351_setup_msynth(SI_SYNTH_PLL_A, mult, num, FRAC_DENOM, 0);
-
-  if (divider != freq0_div) {
+  if (divider != freq_div[0]) {
     si5351_setup_msynth_int(SI_SYNTH_MS_0, divider, 0);
-    si5351_write_reg(SI_CLK0_CONTROL, 0x4C | power0 | SI_CLK_SRC_PLL_A);
+    si5351_write_reg(SI_CLK0_CONTROL, 0x4C | power[0] | SI_CLK_SRC_PLL_A);
     si5351_write_reg(SI_CLK0_PHASE, 0);
     si5351_setup_msynth_int(SI_SYNTH_MS_1, divider, 0);
-    si5351_write_reg(SI_CLK1_CONTROL, 0x4C | power0 | SI_CLK_SRC_PLL_A);
+    si5351_write_reg(SI_CLK1_CONTROL, 0x4C | power[0] | SI_CLK_SRC_PLL_A);
     si5351_write_reg(SI_CLK1_PHASE, divider & 0x7F);
-    freq0_div = freq1_div = divider;
-    *need_reset_pll |= SI_PLL_RESET_A;
-  }
-}
-
-void Si5351::update_freq2(uint8_t* need_reset_pll)
-{
-  uint64_t pll_freq;
-  uint8_t mult;
-  uint32_t num;
-  uint32_t divider;
-  uint8_t rdiv = 0;
-
-  if (freq2 == 0) {
-    disable_out(2);
-    return;
-  }
-
-  // PLL_B --> CLK2, multisynth integer
-  // try to use last divider
-  divider = freq2_div;
-  rdiv = freq2_rdiv;
-  pll_freq = divider * freq2 * (1 << rdiv);
-  
-  if (pll_freq < VCOFreq_Min || pll_freq > VCOFreq_Max) {
-    divider = VCOFreq_Mid / freq2;
-    if (divider < 4) {
-      disable_out(2);
-      return;
-    }
-  
-    if (divider < 6) 
-      divider = 4;
-  
-    rdiv =  0;
-    while (divider > 300) {
-      rdiv++;
-      divider >>= 1;
-    }
-    if (rdiv == 0) divider &= 0xFFFFFFFE;
-  
-    pll_freq = divider * freq2 * (1 << rdiv);
-  }
-  
-  mult = pll_freq*10 / xtal_freq;
-  num = (pll_freq - (uint64_t)mult*xtal_freq/10)*FRAC_DENOM*10/xtal_freq;
-
-  si5351_setup_msynth(SI_SYNTH_PLL_B, mult, num, FRAC_DENOM, 0);
-
-  if (divider != freq2_div || rdiv != freq2_rdiv) {
-    si5351_setup_msynth_int(SI_SYNTH_MS_2, divider, R_DIV(rdiv));
-    si5351_write_reg(SI_CLK2_CONTROL, 0x4C | power2 | SI_CLK_SRC_PLL_B);
-    freq2_div = divider;
-    freq2_rdiv = rdiv;
-    *need_reset_pll |= SI_PLL_RESET_B;
+    freq_div[0] = freq_div[1] = divider;
+    need_reset_pll |= SI_PLL_RESET_A;
   }
 }
 
 uint8_t Si5351::set_freq_quadrature(uint32_t f01, uint32_t f2)
 {
-  uint8_t need_reset_pll = 0;
-  if (f01 != freq0) {
-    freq0 = f01;
-    update_freq01_quad(&need_reset_pll);
+  need_reset_pll = 0;
+  if (f01 != freq[0]) {
+    freq[0] = f01;
+    update_freq_quad();
   }
-  if (f2 != freq2) {
-    freq2 = f2;
-    update_freq2(&need_reset_pll);
+  if (f2 != freq[2]) {
+    freq[2] = f2;
+    update_freq(2);
   }
   if (need_reset_pll) 
     si5351_write_reg(SI_PLL_RESET, need_reset_pll);
