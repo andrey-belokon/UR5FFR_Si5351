@@ -102,5 +102,4 @@ void i2c_init(uint32_t i2c_freq)
   TWBR = ((F_CPU / i2c_freq) - 16) / 2;
   TWSR = 0;
   TWDR = 0xFF;
-  PRR = 0;
 }
