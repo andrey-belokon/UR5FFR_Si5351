@@ -9,6 +9,7 @@
 #define SI5351A_H
 
 #include <inttypes.h>
+#include "i2c_soft.h"
 
 #define SI5351_CLK_DRIVE_2MA  0
 #define SI5351_CLK_DRIVE_4MA  1
@@ -23,7 +24,7 @@
  * if CLK1 == 0 --> CLK2 - PLL_B, multisynth integer
  */
  
-class Si5351 {
+class Si5351Base {
   private:
     uint16_t freq_div[3] = {0,0,0};
     uint8_t freq_rdiv[3] = {0,0,0};
@@ -40,11 +41,19 @@ class Si5351 {
     void update_freq_quad();
     void disable_out(uint8_t clk_num); // 0,1,2
     void set_control(uint8_t clk_num, uint8_t ctrl); // 0,1,2
+    void si5351_setup_msynth_int(uint8_t synth, uint32_t divider, uint8_t rDiv);
+    void si5351_setup_msynth_abc(uint8_t synth, uint8_t a, uint32_t b, uint32_t c, uint8_t rDiv);
+    void si5351_write_regs(uint8_t synth, uint32_t P1, uint32_t P2, uint32_t P3, uint8_t rDiv, bool divby4);
+    void si5351_write_reg(uint8_t reg, uint8_t data);
+  protected:
+    virtual bool _i2c_begin_write(uint8_t addr) = 0;
+    virtual void _i2c_end() = 0;
+    virtual bool _i2c_write(uint8_t data) = 0;
   public:
     static uint32_t VCOFreq_Max; // == 900000000
     static uint32_t VCOFreq_Min; // == 600000000
 
-    Si5351() { xtal_freq=250000000; }
+    Si5351Base() { xtal_freq=250000000; }
     
     // power 0=2mA, 1=4mA, 2=6mA, 3=8mA
     void setup(uint8_t power1 = 3, uint8_t power2 = 3, uint8_t power3 = 3);
@@ -71,6 +80,26 @@ class Si5351 {
     
     // check that freq set corrected
     uint8_t is_freq_ok(uint8_t clk_num);
+};
+
+// si5351 на штатной I2C шине
+class Si5351: public Si5351Base {
+  protected:
+    bool _i2c_begin_write(uint8_t addr);
+    void _i2c_end();
+    bool _i2c_write(uint8_t data);
+};
+
+// si5351 на софтовой I2C шине
+class Si5351Soft: public Si5351Base {
+  private:
+    SoftI2C i2c;
+  public:
+    Si5351Soft(uint8_t sda, uint8_t scl, bool internal_pullup = false): Si5351Base(), i2c(sda,scl,internal_pullup) { i2c.i2c_init(); }
+  protected:
+    bool _i2c_begin_write(uint8_t addr);
+    void _i2c_end();
+    bool _i2c_write(uint8_t data);
 };
 
 #endif

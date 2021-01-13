@@ -47,6 +47,14 @@ uint8_t i2c_read()
 	return (TWDR);
 }
 
+uint8_t i2c_read_continue(bool last)
+{
+  if (last)	TWCR = (1<<TWINT) | (1<<TWEN);
+  else      TWCR = (1<<TWINT) | (1<<TWEN) | (1<<TWEA);
+	while (!(TWCR & (1<<TWINT))) ;
+	return (TWDR);
+}
+
 void i2c_read(uint8_t* data, uint8_t count)
 {
   while (count--) {

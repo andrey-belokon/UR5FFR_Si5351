@@ -39,31 +39,61 @@
 // for fast rdiv shift 
 uint8_t power2[8] = {1,2,4,8,16,32,64,128};
 
-uint32_t Si5351::VCOFreq_Max = 900000000;
-uint32_t Si5351::VCOFreq_Min = 600000000;
-uint32_t Si5351::VCOFreq_Mid = 750000000;
+uint32_t Si5351Base::VCOFreq_Max = 900000000;
+uint32_t Si5351Base::VCOFreq_Min = 600000000;
+uint32_t Si5351Base::VCOFreq_Mid = 750000000;
 
-void si5351_write_reg(uint8_t reg, uint8_t data)
+bool Si5351::_i2c_begin_write(uint8_t addr)
 {
-  i2c_begin_write(SI5351_I2C_ADDR);
-  i2c_write(reg);
-  i2c_write(data);
+  return i2c_begin_write(addr);
+}
+
+void Si5351::_i2c_end()
+{
   i2c_end();
 }
 
-void si5351_write_regs(uint8_t synth, uint32_t P1, uint32_t P2, uint32_t P3, uint8_t rDiv, bool divby4)
+bool Si5351::_i2c_write(uint8_t data)
 {
-  i2c_begin_write(SI5351_I2C_ADDR);
-  i2c_write(synth);
-  i2c_write(((uint8_t*)&P3)[1]);
-  i2c_write((uint8_t)P3);
-  i2c_write((((uint8_t*)&P1)[2] & 0x3) | rDiv | (divby4 ? 0x0C : 0x00));
-  i2c_write(((uint8_t*)&P1)[1]);
-  i2c_write((uint8_t)P1);
-  i2c_write(((P3 & 0x000F0000) >> 12) | ((P2 & 0x000F0000) >> 16));
-  i2c_write(((uint8_t*)&P2)[1]);
-  i2c_write((uint8_t)P2);
-  i2c_end();
+  return i2c_write(data);
+}
+
+bool Si5351Soft::_i2c_begin_write(uint8_t addr)
+{
+  return i2c.i2c_begin_write(addr);
+}
+
+void Si5351Soft::_i2c_end()
+{
+  i2c.i2c_end();
+}
+
+bool Si5351Soft::_i2c_write(uint8_t data)
+{
+  return i2c_write(data);
+}
+
+void Si5351Base::si5351_write_reg(uint8_t reg, uint8_t data)
+{
+  _i2c_begin_write(SI5351_I2C_ADDR);
+  _i2c_write(reg);
+  _i2c_write(data);
+  _i2c_end();
+}
+
+void Si5351Base::si5351_write_regs(uint8_t synth, uint32_t P1, uint32_t P2, uint32_t P3, uint8_t rDiv, bool divby4)
+{
+  _i2c_begin_write(SI5351_I2C_ADDR);
+  _i2c_write(synth);
+  _i2c_write(((uint8_t*)&P3)[1]);
+  _i2c_write((uint8_t)P3);
+  _i2c_write((((uint8_t*)&P1)[2] & 0x3) | rDiv | (divby4 ? 0x0C : 0x00));
+  _i2c_write(((uint8_t*)&P1)[1]);
+  _i2c_write((uint8_t)P1);
+  _i2c_write(((P3 & 0x000F0000) >> 12) | ((P2 & 0x000F0000) >> 16));
+  _i2c_write(((uint8_t*)&P2)[1]);
+  _i2c_write((uint8_t)P2);
+  _i2c_end();
 }
 
 // Set up MultiSynth with mult, num and denom
@@ -71,7 +101,7 @@ void si5351_write_regs(uint8_t synth, uint32_t P1, uint32_t P2, uint32_t P3, uin
 // num is 0..1,048,575 (0xFFFFF)
 // denom is 0..1,048,575 (0xFFFFF)
 //
-void si5351_setup_msynth_abc(uint8_t synth, uint8_t a, uint32_t b, uint32_t c, uint8_t rDiv)
+void Si5351Base::si5351_setup_msynth_abc(uint8_t synth, uint8_t a, uint32_t b, uint32_t c, uint8_t rDiv)
 {
   uint32_t t = 128*b / c;
   si5351_write_regs(
@@ -88,7 +118,7 @@ void si5351_setup_msynth_abc(uint8_t synth, uint8_t a, uint32_t b, uint32_t c, u
 // Set up MultiSynth with integer divider and R divider
 // R divider is the bit value which is OR'ed onto the appropriate register, it is a #define in si5351a.h
 //
-void si5351_setup_msynth_int(uint8_t synth, uint32_t divider, uint8_t rDiv)
+void Si5351Base::si5351_setup_msynth_int(uint8_t synth, uint32_t divider, uint8_t rDiv)
 {
   // P2 = 0, P3 = 1 forces an integer value for the divider
   si5351_write_regs(
@@ -101,7 +131,7 @@ void si5351_setup_msynth_int(uint8_t synth, uint32_t divider, uint8_t rDiv)
   );
 }
 
-void Si5351::si5351_setup_msynth(uint8_t synth, uint32_t pll_freq)
+void Si5351Base::si5351_setup_msynth(uint8_t synth, uint32_t pll_freq)
 {
   uint8_t a = pll_freq / xtal_freq;
   uint32_t b = (pll_freq % xtal_freq) >> 5;
@@ -117,7 +147,7 @@ void Si5351::si5351_setup_msynth(uint8_t synth, uint32_t pll_freq)
   );
 }
 
-void Si5351::setup(uint8_t power0, uint8_t power1, uint8_t power2)
+void Si5351Base::setup(uint8_t power0, uint8_t power1, uint8_t power2)
 {
   power[0] = power0;
   power[1] = power1;
@@ -128,7 +158,7 @@ void Si5351::setup(uint8_t power0, uint8_t power1, uint8_t power2)
   VCOFreq_Mid = (VCOFreq_Min+VCOFreq_Max) >> 1;
 }
 
-void Si5351::set_power(uint8_t clk_num, uint8_t value)
+void Si5351Base::set_power(uint8_t clk_num, uint8_t value)
 {
   power[clk_num] = value;
   // for force update
@@ -136,19 +166,19 @@ void Si5351::set_power(uint8_t clk_num, uint8_t value)
   freq_div[clk_num] = 0;
 }
 
-void Si5351::set_power(uint8_t power1, uint8_t power2, uint8_t power3)
+void Si5351Base::set_power(uint8_t power1, uint8_t power2, uint8_t power3)
 {
   set_power(0,power1);
   set_power(0,power2);
   set_power(0,power3);
 }
 
-void Si5351::set_xtal_freq(uint32_t freq)
+void Si5351Base::set_xtal_freq(uint32_t freq)
 {
   xtal_freq = freq;
 }
 
-uint8_t Si5351::set_freq(uint32_t f0, uint32_t f1, uint32_t f2)
+uint8_t Si5351Base::set_freq(uint32_t f0, uint32_t f1, uint32_t f2)
 {
   need_reset_pll = 0;
   uint8_t freq1_changed = f1 != freq[1];
@@ -166,7 +196,7 @@ uint8_t Si5351::set_freq(uint32_t f0, uint32_t f1, uint32_t f2)
   return need_reset_pll;
 }
 
-uint8_t Si5351::set_freq(uint32_t f0, uint32_t f1)
+uint8_t Si5351Base::set_freq(uint32_t f0, uint32_t f1)
 {
   need_reset_pll = 0;
   if (f0 != freq[0]) {
@@ -182,7 +212,7 @@ uint8_t Si5351::set_freq(uint32_t f0, uint32_t f1)
   return need_reset_pll;
 }
 
-uint8_t Si5351::set_freq(uint32_t f0)
+uint8_t Si5351Base::set_freq(uint32_t f0)
 {
   need_reset_pll = 0;
   if (f0 != freq[0]) {
@@ -194,18 +224,18 @@ uint8_t Si5351::set_freq(uint32_t f0)
   return need_reset_pll;
 }
 
-void Si5351::disable_out(uint8_t clk_num)
+void Si5351Base::disable_out(uint8_t clk_num)
 {
  si5351_write_reg(SI_CLK0_CONTROL+clk_num, 0x80);
  freq_div[clk_num] = 0;
 }
 
-uint8_t Si5351::is_freq_ok(uint8_t clk_num)
+uint8_t Si5351Base::is_freq_ok(uint8_t clk_num)
 {
  return freq_div[clk_num] != 0;
 }
 
-void Si5351::out_calibrate_freq()
+void Si5351Base::out_calibrate_freq()
 {
   si5351_write_reg(SI_CLK0_CONTROL, power[0]);
   si5351_write_reg(SI_CLK1_CONTROL, power[1]);
@@ -217,7 +247,7 @@ void Si5351::out_calibrate_freq()
   freq[0]=freq[1]=freq[2]=xtal_freq;
 }
 
-void Si5351::update_freq(uint8_t clk_num)
+void Si5351Base::update_freq(uint8_t clk_num)
 {
   uint32_t divider,pll_freq;
   uint8_t rdiv = 0;
@@ -263,7 +293,7 @@ void Si5351::update_freq(uint8_t clk_num)
   }
 }
 
-void Si5351::update_freq12(uint8_t freq1_changed)
+void Si5351Base::update_freq12(uint8_t freq1_changed)
 {
   uint32_t pll_freq,divider,num;
   uint8_t rdiv = 0;
@@ -370,7 +400,7 @@ void Si5351::update_freq12(uint8_t freq1_changed)
   }
 }
 
-void Si5351::update_freq_quad()
+void Si5351Base::update_freq_quad()
 {
   uint32_t pll_freq,divider;
 
@@ -416,7 +446,7 @@ void Si5351::update_freq_quad()
   }
 }
 
-uint8_t Si5351::set_freq_quadrature(uint32_t f01, uint32_t f2)
+uint8_t Si5351Base::set_freq_quadrature(uint32_t f01, uint32_t f2)
 {
   need_reset_pll = 0;
   if (f01 != freq[0]) {
