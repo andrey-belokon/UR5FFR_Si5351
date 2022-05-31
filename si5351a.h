@@ -53,7 +53,7 @@ class Si5351Base {
     static uint32_t VCOFreq_Max; // == 900000000
     static uint32_t VCOFreq_Min; // == 600000000
 
-    Si5351Base() { xtal_freq=250000000; }
+    Si5351Base() { xtal_freq=25000000; }
     
     // power 0=2mA, 1=4mA, 2=6mA, 3=8mA
     void setup(uint8_t power1 = 3, uint8_t power2 = 3, uint8_t power3 = 3);
