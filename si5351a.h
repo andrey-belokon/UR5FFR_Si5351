@@ -38,7 +38,7 @@ class Si5351Base {
     void si5351_setup_msynth(uint8_t synth, uint32_t pll_freq);
     void update_freq(uint8_t clk_num);
     void update_freq12(uint8_t freq1_changed);
-    void update_freq_quad();
+    void update_freq_quad(bool inverse_phase);
     void disable_out(uint8_t clk_num); // 0,1,2
     void set_control(uint8_t clk_num, uint8_t ctrl); // 0,1,2
     void si5351_setup_msynth_int(uint8_t synth, uint32_t divider, uint8_t rDiv);
@@ -76,7 +76,7 @@ class Si5351Base {
     
     // CLK0,CLK1 in qudrature, CLK2 = f2
     // return true if PLL was reset
-    uint8_t set_freq_quadrature(uint32_t f01, uint32_t f2);
+    uint8_t set_freq_quadrature(uint32_t f01, uint32_t f2, bool inverse_phase = false);
     
     // check that freq set corrected
     uint8_t is_freq_ok(uint8_t clk_num);

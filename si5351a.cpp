@@ -176,6 +176,7 @@ void Si5351Base::set_power(uint8_t power1, uint8_t power2, uint8_t power3)
 void Si5351Base::set_xtal_freq(uint32_t freq)
 {
   xtal_freq = freq;
+  freq_div[0] = freq_div[1] = freq_div[2] = freq_rdiv[0] = freq_rdiv[1] = freq_rdiv[2] = 0;
 }
 
 uint8_t Si5351Base::set_freq(uint32_t f0, uint32_t f1, uint32_t f2)
@@ -400,7 +401,7 @@ void Si5351Base::update_freq12(uint8_t freq1_changed)
   }
 }
 
-void Si5351Base::update_freq_quad()
+void Si5351Base::update_freq_quad(bool inverse_phase)
 {
   uint32_t pll_freq,divider;
 
@@ -435,23 +436,24 @@ void Si5351Base::update_freq_quad()
   si5351_setup_msynth(SI_SYNTH_PLL_A, pll_freq);
 
   if (divider != freq_div[0]) {
+    uint8_t phase = divider & 0x7F;
     si5351_setup_msynth_int(SI_SYNTH_MS_0, divider, 0);
     si5351_write_reg(SI_CLK0_CONTROL, 0x4C | power[0] | SI_CLK_SRC_PLL_A);
-    si5351_write_reg(SI_CLK0_PHASE, 0);
+    si5351_write_reg(SI_CLK0_PHASE, (inverse_phase ? phase : 0));
     si5351_setup_msynth_int(SI_SYNTH_MS_1, divider, 0);
     si5351_write_reg(SI_CLK1_CONTROL, 0x4C | power[0] | SI_CLK_SRC_PLL_A);
-    si5351_write_reg(SI_CLK1_PHASE, divider & 0x7F);
+    si5351_write_reg(SI_CLK1_PHASE, (inverse_phase ? 0 : phase));
     freq_div[0] = freq_div[1] = divider;
     need_reset_pll |= SI_PLL_RESET_A;
   }
 }
 
-uint8_t Si5351Base::set_freq_quadrature(uint32_t f01, uint32_t f2)
+uint8_t Si5351Base::set_freq_quadrature(uint32_t f01, uint32_t f2, bool inverse_phase)
 {
   need_reset_pll = 0;
   if (f01 != freq[0]) {
     freq[0] = f01;
-    update_freq_quad();
+    update_freq_quad(inverse_phase);
   }
   if (f2 != freq[2]) {
     freq[2] = f2;
